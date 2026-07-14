@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beam Lab — Shear Force &amp; Bending Moment Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f1f0ea; --panel:#ffffff; --ink:#22262c; --muted:#7d838d;
+    --line:#e2e0d6; --grid:#e9e7de; --beam:#343a43; --acc:#2f5fc4;
+    --mom:#b0621d; --reac:#1f8a4c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); }
+  a { color: var(--acc); }
+  a:hover { color: #1d448f; }
+  input:focus, select:focus { outline: 2px solid rgba(47,95,196,.35); outline-offset: 1px; }
+  .btn {
+    padding:6px 11px;border:1px solid var(--line);border-radius:7px;background:var(--panel);
+    color:var(--ink);font:500 12px 'IBM Plex Sans',sans-serif;cursor:pointer;
+  }
+  .btn:hover { border-color: var(--acc); color: var(--acc); }
+  .btn-muted { color: var(--muted); }
+  .btn-muted.danger:hover { border-color: var(--mom); color: var(--mom); }
+  .btn-muted.accent:hover { border-color: var(--acc); color: var(--acc); }
+  .del-btn {
+    border:none;background:none;color:var(--muted);cursor:pointer;font:14px sans-serif;
+    padding:0 2px;line-height:1;
+  }
+  .del-btn:hover { color: var(--mom); }
+  .row-item { display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;cursor:pointer; }
+  .section-label { font:600 10px 'IBM Plex Sans',sans-serif;letter-spacing:.11em;text-transform:uppercase;color:var(--muted); }
+  .unit { font:10px 'IBM Plex Mono',monospace;color:var(--muted);flex:none; }
+  .num-input {
+    padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);
+    color:var(--ink);font:12px 'IBM Plex Mono',monospace;
+  }
+  .select-input {
+    padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--panel);
+    color:var(--ink);font:12px 'IBM Plex Sans',sans-serif;
+  }
+  svg { display:block; user-select:none; max-width:100%; }
+</style>
+</head>
+<body>
+<div id="root" style="min-height:100vh;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',Helvetica,Arial,sans-serif;padding:18px 26px 44px;-webkit-font-smoothing:antialiased">
+  <div style="max-width:1280px;margin:0 auto">
+
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font:600 19px 'IBM Plex Sans',sans-serif">Beam Lab</span>
+        <span style="font:400 12.5px 'IBM Plex Sans',sans-serif;color:var(--muted)">shear force &amp; bending moment, live</span>
+      </div>
+      <span style="font:11.5px 'IBM Plex Mono',monospace;color:var(--muted)">kN · m · sagging positive</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin:14px 0 16px">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span class="section-label">Loads</span>
+        <button id="btnAddPoint" class="btn">↓ Point</button>
+        <button id="btnAddUdl" class="btn">⇊ UDL</button>
+        <button id="btnAddMoment" class="btn">↻ Moment</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px">
+        <span class="section-label">Supports</span>
+        <button id="btnAddPin" class="btn">△ Pin</button>
+        <button id="btnAddRoller" class="btn">○ Roller</button>
+        <button id="btnAddFixed" class="btn">▌ Fixed</button>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:7px">
+        <span class="section-label">Span</span>
+        <input id="lenInput" type="number" value="10" min="1" max="60" step="1" class="num-input" style="width:58px;padding:5px 6px">
+        <span style="font:11px 'IBM Plex Mono',monospace;color:var(--muted)">m</span>
+      </div>
+      <div style="display:flex;gap:7px">
+        <button id="btnResetDemo" class="btn btn-muted accent">Reset demo</button>
+        <button id="btnClearAll" class="btn btn-muted danger">Clear</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:932px minmax(280px,1fr);gap:16px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px 4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:0 2px 2px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:9px;height:9px;border-radius:2px;background:var(--beam)"></span>
+              <span style="font:600 10.5px 'IBM Plex Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">Beam elevation</span>
+            </div>
+            <span id="beamChip" style="font:11px 'IBM Plex Mono',monospace;color:var(--muted)"></span>
+          </div>
+          <svg id="beamSvg" width="900" height="210" viewBox="0 0 900 210" style="touch-action:none">
+            <g id="beamTicksG"></g>
+            <g id="beamHoverG"></g>
+            <rect x="64" y="96" width="806" height="12" rx="1.5" style="fill:var(--beam)"></rect>
+            <g id="beamSupportsG"></g>
+            <g id="beamReactionsG"></g>
+            <g id="beamUdlsG"></g>
+            <g id="beamPointsG"></g>
+            <g id="beamMomentsG"></g>
+          </svg>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px 6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:0 2px 2px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:9px;height:9px;border-radius:2px;background:var(--acc)"></span>
+              <span style="font:600 10.5px 'IBM Plex Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">Shear force · V (kN)</span>
+            </div>
+            <span id="vChip" style="font:11px 'IBM Plex Mono',monospace;color:var(--muted)"></span>
+          </div>
+          <svg id="shearSvg" width="900" height="190" viewBox="0 0 900 190">
+            <g id="shearTicksG"></g>
+            <line x1="64" x2="870" y1="95" y2="95" style="stroke:var(--muted);stroke-width:1;opacity:.55"></line>
+            <text x="56" y="98" text-anchor="end" style="fill:var(--muted);font:10px 'IBM Plex Mono',monospace">0</text>
+            <g id="shearOkG"></g>
+            <g id="shearNotOkG"></g>
+          </svg>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px 6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:0 2px 2px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:9px;height:9px;border-radius:2px;background:var(--mom)"></span>
+              <span style="font:600 10.5px 'IBM Plex Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">Bending moment · M (kN·m)</span>
+            </div>
+            <span id="mChip" style="font:11px 'IBM Plex Mono',monospace;color:var(--muted)"></span>
+          </div>
+          <svg id="momentSvg" width="900" height="190" viewBox="0 0 900 190">
+            <g id="momentTicksG"></g>
+            <line x1="64" x2="870" y1="95" y2="95" style="stroke:var(--muted);stroke-width:1;opacity:.55"></line>
+            <text x="56" y="98" text-anchor="end" style="fill:var(--muted);font:10px 'IBM Plex Mono',monospace">0</text>
+            <g id="momentOkG"></g>
+            <g id="momentNotOkG"></g>
+          </svg>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <div id="statusPanel" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:8px"></div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:8px">
+          <div class="section-label">Supports</div>
+          <div id="supportsList" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:8px">
+          <div class="section-label">Loads</div>
+          <div id="loadsList" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <div style="font:11.5px/1.55 'IBM Plex Sans',sans-serif;color:var(--muted);padding:2px 4px">
+          Double-click the beam to drop a point load. Drag any load or support to move it. Downward loads and counter-clockwise moments are positive; diagrams use the sagging-positive convention.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 900, PADL = 64, IW = 806;
+  var SNAP = 0.1;
+
+  var state = {
+    L: 10,
+    supports: [{ id: 's1', type: 'pin', x: 0 }, { id: 's2', type: 'roller', x: 10 }],
+    loads: [{ id: 'p1', kind: 'point', x: 4, mag: 20 }, { id: 'u1', kind: 'udl', x1: 6, x2: 10, w: 5 }],
+    selected: null,
+    hoverX: null
+  };
+  var dragInfo = null;
+  var _n = 0;
+  function uid(p) { _n++; return p + Date.now().toString(36) + _n; }
+
+  function fmt(v) {
+    if (!isFinite(v)) return '—';
+    var a = Math.abs(v);
+    var d = a >= 100 ? 0 : a >= 10 ? 1 : 2;
+    var s = v.toFixed(d);
+    if (d > 0) s = s.replace(/\.?0+$/, '');
+    if (s === '-0') s = '0';
+    return s;
+  }
+
+  var beamSvg = document.getElementById('beamSvg');
+  var shearSvg = document.getElementById('shearSvg');
+  var momentSvg = document.getElementById('momentSvg');
+  var lenInput = document.getElementById('lenInput');
+
+  function xToPx(x) { return PADL + x / state.L * IW; }
+  function clientToX(clientX) {
+    var r = beamSvg.getBoundingClientRect();
+    var sc = r.width / W;
+    return ((clientX - r.left) / sc - PADL) / IW * state.L;
+  }
+  function clientToXFor(el, clientX) {
+    var r = el.getBoundingClientRect();
+    var sc = r.width / W;
+    return ((clientX - r.left) / sc - PADL) / IW * state.L;
+  }
+  function snapClamp(x) { return Math.min(state.L, Math.max(0, Math.round(x / SNAP) * SNAP)); }
+
+  function chev(x, y, dx, dy) {
+    var s = 4.6;
+    var bx = x - dx * s * 1.5, by = y - dy * s * 1.5;
+    var px = -dy, py = dx;
+    function f(n) { return n.toFixed(1); }
+    return ' M' + f(bx + px * s) + ' ' + f(by + py * s) + ' L' + f(x) + ' ' + f(y) + ' L' + f(bx - px * s) + ' ' + f(by - py * s);
+  }
+
+  function solve() {
+    var supports = state.supports, loads = state.loads;
+    var cols = [];
+    for (var i = 0; i < supports.length; i++) {
+      var s = supports[i];
+      cols.push({ fy: 1, m: s.x, id: s.id, comp: 'V' });
+      if (s.type === 'fixed') cols.push({ fy: 0, m: 1, id: s.id, comp: 'M' });
+    }
+    var sumF = 0, sumM = 0;
+    for (var j = 0; j < loads.length; j++) {
+      var l = loads[j];
+      if (l.kind === 'point') { sumF += l.mag; sumM += l.mag * l.x; }
+      else if (l.kind === 'udl') {
+        var a = Math.min(l.x1, l.x2), b = Math.max(l.x1, l.x2), len = b - a;
+        sumF += l.w * len; sumM += l.w * len * (a + b) / 2;
+      } else if (l.kind === 'moment') { sumM -= l.m; }
+    }
+    if (cols.length < 2) return { ok: false, msg: 'Unstable — 2 reaction components needed. Add a support.' };
+    if (cols.length > 2) return { ok: false, msg: 'Statically indeterminate — remove a support.' };
+    var c1 = cols[0], c2 = cols[1];
+    var det = c1.fy * c2.m - c2.fy * c1.m;
+    if (Math.abs(det) < 1e-9) return { ok: false, msg: 'Unstable arrangement — move the supports apart.' };
+    var u1 = (sumF * c2.m - c2.fy * sumM) / det;
+    var u2 = (c1.fy * sumM - c1.m * sumF) / det;
+    var map = {};
+    for (var k = 0; k < supports.length; k++) { var sk = supports[k]; map[sk.id] = { x: sk.x, type: sk.type, V: 0, M: 0 }; }
+    map[c1.id][c1.comp] = u1;
+    map[c2.id][c2.comp] = u2;
+    return { ok: true, reac: supports.map(function (s) { return map[s.id]; }) };
+  }
+
+  function Vat(x, reac) {
+    var v = 0;
+    for (var i = 0; i < reac.length; i++) { var r = reac[i]; if (r.x <= x + 1e-9) v += r.V; }
+    for (var j = 0; j < state.loads.length; j++) {
+      var l = state.loads[j];
+      if (l.kind === 'point') { if (l.x <= x + 1e-9) v -= l.mag; }
+      else if (l.kind === 'udl') {
+        var a = Math.min(l.x1, l.x2), b = Math.max(l.x1, l.x2);
+        var ov = Math.max(0, Math.min(x, b) - a);
+        v -= l.w * ov;
+      }
+    }
+    return v;
+  }
+  function Mat(x, reac) {
+    var m = 0;
+    for (var i = 0; i < reac.length; i++) { var r = reac[i]; if (r.x <= x + 1e-9) { m += r.V * (x - r.x); m -= r.M; } }
+    for (var j = 0; j < state.loads.length; j++) {
+      var l = state.loads[j];
+      if (l.kind === 'point') { if (l.x <= x + 1e-9) m -= l.mag * (x - l.x); }
+      else if (l.kind === 'udl') {
+        var a = Math.min(l.x1, l.x2), b = Math.max(l.x1, l.x2);
+        var hi = Math.min(x, b);
+        var ov = Math.max(0, hi - a);
+        if (ov > 0) m -= l.w * ov * (x - (a + hi) / 2);
+      } else if (l.kind === 'moment') { if (l.x <= x + 1e-9) m -= l.m; }
+    }
+    return m;
+  }
+
+  function compute() {
+    var L = state.L, supports = state.supports, loads = state.loads, selected = state.selected, hoverX = state.hoverX;
+    var P = PADL, f = fmt;
+    function xpx(x) { return xToPx(x); }
+
+    var step = 20;
+    var stepsArr = [0.5, 1, 2, 2.5, 5, 10, 20];
+    for (var si = 0; si < stepsArr.length; si++) { if (L / stepsArr[si] <= 13) { step = stepsArr[si]; break; } }
+    var ticks = [];
+    for (var t = 0; t <= L + 1e-9; t += step) {
+      ticks.push({ px: +xpx(t).toFixed(1), label: String(Math.round(t * 100) / 100) });
+    }
+
+    var sol = solve();
+    var ok = sol.ok;
+    var reac = ok ? sol.reac : [];
+
+    var xs = [];
+    var NB = 420;
+    for (var i = 0; i <= NB; i++) xs.push(i * L / NB);
+    var crit = [];
+    for (var si2 = 0; si2 < supports.length; si2++) crit.push(supports[si2].x);
+    for (var li = 0; li < loads.length; li++) {
+      var l = loads[li];
+      if (l.kind === 'udl') { crit.push(Math.min(l.x1, l.x2), Math.max(l.x1, l.x2)); }
+      else crit.push(l.x);
+    }
+    for (var ci = 0; ci < crit.length; ci++) {
+      var c = crit[ci];
+      if (c > 1e-6) xs.push(c - 1e-6);
+      if (c < L - 1e-6) xs.push(c + 1e-6);
+      xs.push(c);
+    }
+    xs.sort(function (a, b) { return a - b; });
+
+    var Vs = [], Ms = [], viMin = 0, viMax = 0, miMin = 0, miMax = 0;
+    if (ok) {
+      Vs = xs.map(function (x) { return Vat(x, reac); });
+      Ms = xs.map(function (x) { return Mat(x, reac); });
+      Vs.forEach(function (v, i) { if (v < Vs[viMin]) viMin = i; if (v > Vs[viMax]) viMax = i; });
+      Ms.forEach(function (m, i) { if (m < Ms[miMin]) miMin = i; if (m > Ms[miMax]) miMax = i; });
+    }
+    var vmin = ok ? Vs[viMin] : 0, vmax = ok ? Vs[viMax] : 0;
+    var mmin = ok ? Ms[miMin] : 0, mmax = ok ? Ms[miMax] : 0;
+
+    var mid = 95, hh = 74;
+    var vAbs = Math.max(Math.abs(vmin), Math.abs(vmax));
+    var mAbs = Math.max(Math.abs(mmin), Math.abs(mmax));
+    var vSc = vAbs < 1e-9 ? 0 : hh / vAbs;
+    var mSc = mAbs < 1e-9 ? 0 : hh / mAbs;
+    function yV(v) { return mid - v * vSc; }
+    function yM(m) { return mid - m * mSc; }
+
+    var vPath = '', vArea = '', mPath = '', mArea = '';
+    if (ok && xs.length) {
+      function mk(ys) { return xs.map(function (x, i) { return (i ? 'L' : 'M') + xpx(x).toFixed(1) + ' ' + ys[i].toFixed(1); }).join(''); }
+      vPath = mk(Vs.map(yV));
+      mPath = mk(Ms.map(yM));
+      var closeA = 'L' + xpx(L).toFixed(1) + ' ' + mid + ' L' + xpx(0).toFixed(1) + ' ' + mid + ' Z';
+      vArea = vPath + closeA;
+      mArea = mPath + closeA;
+    }
+
+    function ann(idx, val, yFn, unit) {
+      var cx = xpx(xs[idx]), cy = yFn(val);
+      var above = cy <= mid;
+      return {
+        cx: +cx.toFixed(1), cy: +cy.toFixed(1),
+        ty: +(above ? cy - 9 : cy + 16).toFixed(1),
+        ta: cx > W - 160 ? 'end' : (cx < P + 90 ? 'start' : 'middle'),
+        text: f(val) + ' ' + unit + ' @ ' + f(xs[idx]) + ' m'
+      };
+    }
+    var annV = [], annM = [];
+    if (ok) {
+      if (Math.abs(vmax) > 1e-6) annV.push(ann(viMax, vmax, yV, 'kN'));
+      if (Math.abs(vmin) > 1e-6 && viMin !== viMax) annV.push(ann(viMin, vmin, yV, 'kN'));
+      if (Math.abs(mmax) > 1e-6) annM.push(ann(miMax, mmax, yM, 'kN·m'));
+      if (Math.abs(mmin) > 1e-6 && miMin !== miMax) annM.push(ann(miMin, mmin, yM, 'kN·m'));
+    }
+
+    var isHover = hoverX != null;
+    var hpx = isHover ? +xpx(hoverX).toFixed(1) : 0;
+    var hV = isHover && ok ? Vat(hoverX, reac) : 0;
+    var hM = isHover && ok ? Mat(hoverX, reac) : 0;
+    var vHy = +yV(hV).toFixed(1);
+    var mHy = +yM(hM).toFixed(1);
+
+    var supportsR = supports.map(function (s) {
+      var px = xpx(s.x);
+      var side = s.x < L / 2 ? -1 : 1;
+      var fixedD = '';
+      if (s.type === 'fixed') {
+        fixedD = 'M0 -34 L0 24';
+        for (var y = -26; y <= 18; y += 11) fixedD += ' M0 ' + (y + 9) + ' L' + (side * 9) + ' ' + y;
+      }
+      return {
+        id: s.id, px: +px.toFixed(1),
+        isPin: s.type === 'pin', isRoller: s.type === 'roller', isFixed: s.type === 'fixed',
+        fixedD: fixedD, selected: selected === s.id
+      };
+    });
+
+    var reactionsR = [];
+    if (ok) reac.forEach(function (r, i) {
+      var s = supports[i];
+      var px = xpx(r.x);
+      var fp = px.toFixed(1);
+      var up = r.V >= 0;
+      var d = up
+        ? 'M' + fp + ' 172 L' + fp + ' 148' + chev(px, 144, 0, -1)
+        : 'M' + fp + ' 144 L' + fp + ' 168' + chev(px, 172, 0, 1);
+      var text = f(r.V) + ' kN';
+      if (s.type === 'fixed') text += ' · M ' + f(r.M) + ' kN·m';
+      var ta = px < P + 70 ? 'start' : (px > W - 130 ? 'end' : 'middle');
+      reactionsR.push({ d: d, tx: +fp, ta: ta, text: text });
+    });
+
+    var pointsR = loads.filter(function (l) { return l.kind === 'point'; }).map(function (l) {
+      var px = xpx(l.x);
+      var fp = px.toFixed(1);
+      var down = l.mag >= 0;
+      var d = down
+        ? 'M' + fp + ' 44 L' + fp + ' 87' + chev(px, 91, 0, 1)
+        : 'M' + fp + ' 91 L' + fp + ' 50' + chev(px, 46, 0, -1);
+      return {
+        id: l.id, d: d, lx: +fp, label: f(l.mag) + ' kN',
+        gx: +(px - 13).toFixed(1), selected: selected === l.id
+      };
+    });
+
+    var udlsR = loads.filter(function (l) { return l.kind === 'udl'; }).map(function (l) {
+      var a = Math.min(l.x1, l.x2), b = Math.max(l.x1, l.x2);
+      var p1 = xpx(a), p2 = xpx(b);
+      var down = l.w >= 0;
+      var d = 'M' + p1.toFixed(1) + ' 58 L' + p2.toFixed(1) + ' 58';
+      var n = Math.max(2, Math.floor((p2 - p1) / 30) + 1);
+      for (var i = 0; i < n; i++) {
+        var xi = p1 + (p2 - p1) * (n === 1 ? 0.5 : i / (n - 1));
+        var fx = xi.toFixed(1);
+        d += down
+          ? ' M' + fx + ' 60 L' + fx + ' 86' + chev(xi, 90, 0, 1)
+          : ' M' + fx + ' 90 L' + fx + ' 64' + chev(xi, 60, 0, -1);
+      }
+      return {
+        id: l.id, d: d,
+        bx: +p1.toFixed(1), bw: +Math.max(2, p2 - p1).toFixed(1),
+        gx: +(p1 - 6).toFixed(1), gw: +Math.max(14, p2 - p1 + 12).toFixed(1),
+        lx: +((p1 + p2) / 2).toFixed(1), label: f(l.w) + ' kN/m',
+        selected: selected === l.id
+      };
+    });
+
+    var momentsR = loads.filter(function (l) { return l.kind === 'moment'; }).map(function (l) {
+      var px = xpx(l.x);
+      var r = 16, cy = 102;
+      var ccw = l.m >= 0;
+      function pt(deg) { var rad = deg * Math.PI / 180; return [px + r * Math.cos(rad), cy - r * Math.sin(rad)]; }
+      var d;
+      if (ccw) {
+        var p0 = pt(-60), p1c = pt(240);
+        d = 'M' + p0[0].toFixed(1) + ' ' + p0[1].toFixed(1) + ' A16 16 0 1 0 ' + p1c[0].toFixed(1) + ' ' + p1c[1].toFixed(1) + chev(p1c[0], p1c[1], 0.866, 0.5);
+      } else {
+        var q0 = pt(240), q1 = pt(-60);
+        d = 'M' + q0[0].toFixed(1) + ' ' + q0[1].toFixed(1) + ' A16 16 0 1 1 ' + q1[0].toFixed(1) + ' ' + q1[1].toFixed(1) + chev(q1[0], q1[1], -0.866, 0.5);
+      }
+      return { id: l.id, d: d, cx: +px.toFixed(1), label: f(l.m) + ' kN·m', selected: selected === l.id };
+    });
+
+    var names = { pin: 'Pin', roller: 'Roller', fixed: 'Fixed' };
+    var reactionsList = ok ? reac.map(function (r, i) {
+      var s = supports[i];
+      var tt = names[s.type] + ' @ ' + f(r.x) + ' m — R = ' + f(r.V) + ' kN';
+      if (s.type === 'fixed') tt += ', M = ' + f(r.M) + ' kN·m';
+      return tt;
+    }) : [];
+
+    var supportRows = supports.map(function (s) { return { id: s.id, selected: selected === s.id, type: s.type, x: s.x }; });
+    var loadRows = loads.map(function (l) {
+      return { id: l.id, selected: selected === l.id, kind: l.kind, x: l.x, mag: l.mag, x1: l.x1, x2: l.x2, w: l.w, m: l.m };
+    });
+
+    var statusText = ok ? 'Determinate & stable' : sol.msg;
+    var beamChip = isHover ? ('x = ' + hoverX.toFixed(2) + ' m') : ('L = ' + f(L) + ' m · snap ' + SNAP + ' m');
+    var vChip = !ok ? '—' : (isHover ? ('V = ' + f(hV) + ' kN') : ('min ' + f(vmin) + ' / max ' + f(vmax) + ' kN'));
+    var mChip = !ok ? '—' : (isHover ? ('M = ' + f(hM) + ' kN·m') : ('min ' + f(mmin) + ' / max ' + f(mmax) + ' kN·m'));
+
+    return {
+      L: L, ticks: ticks, ok: ok, notOk: !ok, statusText: statusText,
+      vPath: vPath, vArea: vArea, mPath: mPath, mArea: mArea, annV: annV, annM: annM,
+      isHover: isHover, hpx: hpx, vHy: vHy, mHy: mHy,
+      supportsR: supportsR, reactionsR: reactionsR, pointsR: pointsR, udlsR: udlsR, momentsR: momentsR,
+      reactionsList: reactionsList, supportRows: supportRows, loadRows: loadRows,
+      beamChip: beamChip, vChip: vChip, mChip: mChip,
+      noSupports: supports.length === 0, noLoads: loads.length === 0
+    };
+  }
+
+  var PIN_SVG = '<polygon points="0,0 -11,21 11,21" style="fill:var(--panel);stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round"></polygon>' +
+    '<path d="M-17 21 L17 21 M-14 28 L-7 21 M-6 28 L1 21 M2 28 L9 21 M10 28 L17 21" style="stroke:var(--ink);stroke-width:1.1;fill:none"></path>';
+  var ROLLER_SVG = '<polygon points="0,0 -11,17 11,17" style="fill:var(--panel);stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round"></polygon>' +
+    '<circle cx="-6" cy="21.5" r="4" style="fill:var(--panel);stroke:var(--ink);stroke-width:1.5"></circle>' +
+    '<circle cx="6" cy="21.5" r="4" style="fill:var(--panel);stroke:var(--ink);stroke-width:1.5"></circle>' +
+    '<line x1="-16" y1="27" x2="16" y2="27" style="stroke:var(--ink);stroke-width:1.2"></line>';
+
+  function renderBeam(d) {
+    document.getElementById('beamTicksG').innerHTML = d.ticks.map(function (t) {
+      return '<line x1="' + t.px + '" x2="' + t.px + '" y1="22" y2="194" style="stroke:var(--grid);stroke-width:1"></line>' +
+        '<text x="' + t.px + '" y="206" text-anchor="middle" style="fill:var(--muted);font:10px \'IBM Plex Mono\',monospace">' + t.label + '</text>';
+    }).join('');
+
+    document.getElementById('beamHoverG').innerHTML = d.isHover
+      ? '<line x1="' + d.hpx + '" x2="' + d.hpx + '" y1="22" y2="194" style="stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3;opacity:.4"></line>'
+      : '';
+
+    document.getElementById('beamSupportsG').innerHTML = d.supportsR.map(function (s) {
+      var shape = s.isPin ? PIN_SVG : s.isRoller ? ROLLER_SVG : '<path d="' + s.fixedD + '" style="stroke:var(--ink);stroke-width:1.7;fill:none"></path>';
+      var sel = s.selected ? '<circle cx="0" cy="4" r="27" style="fill:var(--acc);opacity:.12"></circle>' : '';
+      return '<g data-item="1" data-kind="support" data-id="' + s.id + '" transform="translate(' + s.px + ',108)" style="cursor:grab">' +
+        sel + shape + '<rect x="-18" y="-38" width="36" height="70" style="fill:transparent"></rect></g>';
+    }).join('');
+
+    document.getElementById('beamReactionsG').innerHTML = d.reactionsR.map(function (r) {
+      return '<path d="' + r.d + '" style="stroke:var(--reac);stroke-width:1.8;fill:none;stroke-linecap:round"></path>' +
+        '<text x="' + r.tx + '" y="188" text-anchor="' + r.ta + '" style="fill:var(--reac);font:500 10.5px \'IBM Plex Mono\',monospace">' + r.text + '</text>';
+    }).join('');
+
+    document.getElementById('beamUdlsG').innerHTML = d.udlsR.map(function (u) {
+      var sel = u.selected ? '<rect x="' + u.gx + '" y="40" width="' + u.gw + '" height="60" rx="9" style="fill:var(--acc);opacity:.10"></rect>' : '';
+      return '<g data-item="1" data-kind="udl" data-id="' + u.id + '" style="cursor:grab">' + sel +
+        '<rect x="' + u.bx + '" y="58" width="' + u.bw + '" height="38" style="fill:var(--acc);opacity:.08"></rect>' +
+        '<path d="' + u.d + '" style="stroke:var(--acc);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round"></path>' +
+        '<text x="' + u.lx + '" y="48" text-anchor="middle" style="fill:var(--acc);font:500 11px \'IBM Plex Mono\',monospace">' + u.label + '</text>' +
+        '<rect x="' + u.bx + '" y="42" width="' + u.bw + '" height="54" style="fill:transparent"></rect></g>';
+    }).join('');
+
+    document.getElementById('beamPointsG').innerHTML = d.pointsR.map(function (ld) {
+      var sel = ld.selected ? '<rect x="' + ld.gx + '" y="30" width="26" height="66" rx="9" style="fill:var(--acc);opacity:.12"></rect>' : '';
+      return '<g data-item="1" data-kind="item" data-id="' + ld.id + '" style="cursor:grab">' + sel +
+        '<path d="' + ld.d + '" style="stroke:var(--acc);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round"></path>' +
+        '<text x="' + ld.lx + '" y="36" text-anchor="middle" style="fill:var(--acc);font:500 11px \'IBM Plex Mono\',monospace">' + ld.label + '</text>' +
+        '<rect x="' + ld.gx + '" y="26" width="26" height="70" style="fill:transparent"></rect></g>';
+    }).join('');
+
+    document.getElementById('beamMomentsG').innerHTML = d.momentsR.map(function (mo) {
+      var sel = mo.selected ? '<circle cx="' + mo.cx + '" cy="102" r="26" style="fill:var(--mom);opacity:.12"></circle>' : '';
+      return '<g data-item="1" data-kind="item" data-id="' + mo.id + '" style="cursor:grab">' + sel +
+        '<path d="' + mo.d + '" style="stroke:var(--mom);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round"></path>' +
+        '<text x="' + mo.cx + '" y="74" text-anchor="middle" style="fill:var(--mom);font:500 11px \'IBM Plex Mono\',monospace">' + mo.label + '</text>' +
+        '<circle cx="' + mo.cx + '" cy="102" r="21" style="fill:transparent"></circle></g>';
+    }).join('');
+
+    document.getElementById('beamChip').textContent = d.beamChip;
+  }
+
+  function renderCurve(prefix, color, d, path, area, ann, hy) {
+    document.getElementById(prefix + 'TicksG').innerHTML = d.ticks.map(function (t) {
+      return '<line x1="' + t.px + '" x2="' + t.px + '" y1="10" y2="180" style="stroke:var(--grid);stroke-width:1"></line>';
+    }).join('');
+
+    var okG = document.getElementById(prefix + 'OkG');
+    var notOkG = document.getElementById(prefix + 'NotOkG');
+    if (d.ok) {
+      var html = '<path d="' + area + '" style="fill:var(--' + color + ');opacity:.09"></path>' +
+        '<path d="' + path + '" style="stroke:var(--' + color + ');stroke-width:1.8;fill:none;stroke-linejoin:round"></path>';
+      html += ann.map(function (a) {
+        return '<circle cx="' + a.cx + '" cy="' + a.cy + '" r="2.6" style="fill:var(--' + color + ')"></circle>' +
+          '<text x="' + a.cx + '" y="' + a.ty + '" text-anchor="' + a.ta + '" style="fill:var(--' + color + ');font:500 10.5px \'IBM Plex Mono\',monospace">' + a.text + '</text>';
+      }).join('');
+      if (d.isHover) {
+        html += '<line x1="' + d.hpx + '" x2="' + d.hpx + '" y1="10" y2="180" style="stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3;opacity:.4"></line>' +
+          '<circle cx="' + d.hpx + '" cy="' + hy + '" r="3.4" style="fill:var(--panel);stroke:var(--' + color + ');stroke-width:2"></circle>';
+      }
+      okG.innerHTML = html;
+      notOkG.innerHTML = '';
+    } else {
+      okG.innerHTML = '';
+      notOkG.innerHTML = '<text x="467" y="99" text-anchor="middle" style="fill:var(--muted);font:12px \'IBM Plex Sans\',sans-serif">' + d.statusText + '</text>';
+    }
+  }
+
+  function renderStatus(d) {
+    var dotColor = d.ok ? 'var(--reac)' : 'var(--mom)';
+    var html = '<div style="display:flex;align-items:center;gap:8px">' +
+      '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';flex:none"></span>' +
+      '<span style="font:500 12.5px \'IBM Plex Sans\',sans-serif">' + d.statusText + '</span></div>';
+    if (d.ok) {
+      html += '<div class="section-label" style="margin-top:2px">Reactions</div>' +
+        '<div style="display:flex;flex-direction:column;gap:3px">' +
+        d.reactionsList.map(function (t) { return '<div style="font:12px \'IBM Plex Mono\',monospace;color:var(--ink)">' + t + '</div>'; }).join('') +
+        '</div>';
+    }
+    document.getElementById('statusPanel').innerHTML = html;
+  }
+
+  function renderSupportsPanel(d) {
+    var html = d.supportRows.map(function (s) {
+      var dot = s.selected ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--acc);flex:none"></span>' : '';
+      return '<div class="row-item" data-role="support-row" data-id="' + s.id + '">' + dot +
+        '<select class="select-input" data-role="support-type" data-id="' + s.id + '">' +
+        '<option value="pin"' + (s.type === 'pin' ? ' selected' : '') + '>Pin</option>' +
+        '<option value="roller"' + (s.type === 'roller' ? ' selected' : '') + '>Roller</option>' +
+        '<option value="fixed"' + (s.type === 'fixed' ? ' selected' : '') + '>Fixed</option>' +
+        '</select>' +
+        '<span class="unit" style="margin-left:auto">x</span>' +
+        '<input type="number" class="num-input" style="width:52px" data-role="support-x" data-id="' + s.id + '" value="' + s.x + '" step="0.25">' +
+        '<span class="unit">m</span>' +
+        '<button class="del-btn" data-role="support-del" data-id="' + s.id + '">×</button></div>';
+    }).join('');
+    if (d.noSupports) html += '<div style="font:11.5px \'IBM Plex Sans\',sans-serif;color:var(--muted)">No supports — add a pin, roller or fixed end.</div>';
+    document.getElementById('supportsList').innerHTML = html;
+  }
+
+  function renderLoadsPanel(d) {
+    var html = d.loadRows.map(function (l) {
+      var dot = l.selected ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--acc);flex:none"></span>' : '';
+      var fields = '';
+      if (l.kind === 'point') {
+        fields =
+          '<span style="font:600 11px \'IBM Plex Mono\',monospace;color:var(--acc);width:13px;text-align:center;flex:none">P</span>' +
+          '<span class="unit">x</span>' +
+          '<input type="number" class="num-input" style="width:50px" data-role="load-x" data-id="' + l.id + '" value="' + l.x + '" step="0.25">' +
+          '<span class="unit">kN</span>' +
+          '<input type="number" class="num-input" style="width:50px" data-role="load-mag" data-id="' + l.id + '" value="' + l.mag + '" step="1">';
+      } else if (l.kind === 'udl') {
+        fields =
+          '<span style="font:600 11px \'IBM Plex Mono\',monospace;color:var(--acc);width:13px;text-align:center;flex:none">w</span>' +
+          '<span class="unit">x₁</span>' +
+          '<input type="number" class="num-input" style="width:44px;padding:4px 5px" data-role="load-x1" data-id="' + l.id + '" value="' + l.x1 + '" step="0.25">' +
+          '<span class="unit">x₂</span>' +
+          '<input type="number" class="num-input" style="width:44px;padding:4px 5px" data-role="load-x2" data-id="' + l.id + '" value="' + l.x2 + '" step="0.25">' +
+          '<span class="unit">kN/m</span>' +
+          '<input type="number" class="num-input" style="width:44px;padding:4px 5px" data-role="load-w" data-id="' + l.id + '" value="' + l.w + '" step="1">';
+      } else {
+        fields =
+          '<span style="font:600 11px \'IBM Plex Mono\',monospace;color:var(--mom);width:13px;text-align:center;flex:none">M</span>' +
+          '<span class="unit">x</span>' +
+          '<input type="number" class="num-input" style="width:50px" data-role="load-x" data-id="' + l.id + '" value="' + l.x + '" step="0.25">' +
+          '<span class="unit">kN·m</span>' +
+          '<input type="number" class="num-input" style="width:50px" data-role="load-m" data-id="' + l.id + '" value="' + l.m + '" step="1">';
+      }
+      return '<div class="row-item" data-role="load-row" data-id="' + l.id + '" style="flex-wrap:wrap">' + dot + fields +
+        '<button class="del-btn" data-role="load-del" data-id="' + l.id + '" style="margin-left:auto">×</button></div>';
+    }).join('');
+    if (d.noLoads) html += '<div style="font:11.5px \'IBM Plex Sans\',sans-serif;color:var(--muted)">No loads yet — use the toolbar or double-click the beam.</div>';
+    document.getElementById('loadsList').innerHTML = html;
+  }
+
+  function render(opts) {
+    opts = opts || {};
+    var d = compute();
+    renderBeam(d);
+    renderCurve('shear', 'acc', d, d.vPath, d.vArea, d.annV, d.vHy);
+    renderCurve('moment', 'mom', d, d.mPath, d.mArea, d.annM, d.mHy);
+    renderStatus(d);
+    document.getElementById('vChip').textContent = d.vChip;
+    document.getElementById('mChip').textContent = d.mChip;
+    if (document.activeElement !== lenInput) lenInput.value = state.L;
+    if (!opts.skipPanels) {
+      renderSupportsPanel(d);
+      renderLoadsPanel(d);
+    }
+  }
+
+  function updItem(id, patch, opts) {
+    state.supports = state.supports.map(function (i) { return i.id === id ? Object.assign({}, i, patch) : i; });
+    state.loads = state.loads.map(function (i) { return i.id === id ? Object.assign({}, i, patch) : i; });
+    render(opts);
+  }
+  function removeItem(id) {
+    state.supports = state.supports.filter(function (i) { return i.id !== id; });
+    state.loads = state.loads.filter(function (i) { return i.id !== id; });
+    if (state.selected === id) state.selected = null;
+    render();
+  }
+  function addLoad(l) {
+    var id = uid('l');
+    var obj = Object.assign({}, l, { id: id });
+    state.loads = state.loads.concat([obj]);
+    state.selected = id;
+    render();
+  }
+  function addSupport(type) {
+    var id = uid('s');
+    var L = state.L, supports = state.supports;
+    var taken = supports.map(function (s) { return s.x; });
+    var candidates = [0, L, L / 2, L / 4, 3 * L / 4];
+    var cand;
+    for (var i = 0; i < candidates.length; i++) {
+      var c = candidates[i];
+      if (!taken.some(function (t) { return Math.abs(t - c) < 0.01; })) { cand = c; break; }
+    }
+    state.supports = supports.concat([{ id: id, type: type, x: cand !== undefined ? cand : L / 2 }]);
+    state.selected = id;
+    render();
+  }
+
+  // Toolbar
+  document.getElementById('btnAddPoint').addEventListener('click', function () {
+    addLoad({ kind: 'point', x: snapClamp(state.L / 2), mag: 10 });
+  });
+  document.getElementById('btnAddUdl').addEventListener('click', function () {
+    addLoad({ kind: 'udl', x1: snapClamp(state.L * 0.25), x2: snapClamp(state.L * 0.75), w: 5 });
+  });
+  document.getElementById('btnAddMoment').addEventListener('click', function () {
+    addLoad({ kind: 'moment', x: snapClamp(state.L / 2), m: 15 });
+  });
+  document.getElementById('btnAddPin').addEventListener('click', function () { addSupport('pin'); });
+  document.getElementById('btnAddRoller').addEventListener('click', function () { addSupport('roller'); });
+  document.getElementById('btnAddFixed').addEventListener('click', function () { addSupport('fixed'); });
+
+  document.getElementById('btnResetDemo').addEventListener('click', function () {
+    state.L = 10;
+    state.supports = [{ id: 's1', type: 'pin', x: 0 }, { id: 's2', type: 'roller', x: 10 }];
+    state.loads = [{ id: 'p1', kind: 'point', x: 4, mag: 20 }, { id: 'u1', kind: 'udl', x1: 6, x2: 10, w: 5 }];
+    state.selected = null;
+    render();
+  });
+  document.getElementById('btnClearAll').addEventListener('click', function () {
+    state.supports = [];
+    state.loads = [];
+    state.selected = null;
+    render();
+  });
+
+  lenInput.addEventListener('input', function (e) {
+    var v = parseFloat(e.target.value);
+    if (!isFinite(v)) return;
+    var L = Math.min(60, Math.max(1, v));
+    state.L = L;
+    state.supports = state.supports.map(function (i) { return Object.assign({}, i, { x: Math.min(i.x, L) }); });
+    state.loads = state.loads.map(function (i) {
+      return i.kind === 'udl' ? Object.assign({}, i, { x1: Math.min(i.x1, L), x2: Math.min(i.x2, L) }) : Object.assign({}, i, { x: Math.min(i.x, L) });
+    });
+    render();
+  });
+  lenInput.addEventListener('change', function () { render(); });
+
+  // Beam SVG interaction
+  beamSvg.addEventListener('pointerdown', function (e) {
+    var g = e.target.closest && e.target.closest('[data-item]');
+    if (!g) return;
+    e.stopPropagation();
+    e.preventDefault();
+    var kind = g.getAttribute('data-kind');
+    var id = g.getAttribute('data-id');
+    if (kind === 'udl') {
+      var item = state.loads.filter(function (l) { return l.id === id; })[0];
+      var a = Math.min(item.x1, item.x2);
+      dragInfo = { id: id, type: 'udl', dx: clientToX(e.clientX) - a };
+    } else if (kind === 'support') {
+      dragInfo = { id: id, type: 'support' };
+    } else {
+      dragInfo = { id: id, type: 'item' };
+    }
+    if (state.selected !== id) { state.selected = id; render(); }
+  });
+
+  beamSvg.addEventListener('click', function (e) {
+    var g = e.target.closest && e.target.closest('[data-item]');
+    if (g) {
+      var id = g.getAttribute('data-id');
+      if (state.selected !== id) { state.selected = id; render(); }
+      return;
+    }
+    if (state.selected) { state.selected = null; render(); }
+  });
+
+  beamSvg.addEventListener('dblclick', function (e) {
+    if (e.target.closest && e.target.closest('[data-item]')) return;
+    var x = snapClamp(clientToX(e.clientX));
+    var id = uid('p');
+    state.loads = state.loads.concat([{ id: id, kind: 'point', x: x, mag: 10 }]);
+    state.selected = id;
+    render();
+  });
+
+  function makeHoverHandlers(svgEl) {
+    svgEl.addEventListener('mousemove', function (e) {
+      var x = clientToXFor(svgEl, e.clientX);
+      if (x < -0.4 || x > state.L + 0.4) {
+        if (state.hoverX !== null) { state.hoverX = null; render(); }
+        return;
+      }
+      x = Math.min(state.L, Math.max(0, x));
+      state.hoverX = x;
+      render();
+    });
+    svgEl.addEventListener('mouseleave', function () {
+      if (state.hoverX !== null) { state.hoverX = null; render(); }
+    });
+  }
+  makeHoverHandlers(beamSvg);
+  makeHoverHandlers(shearSvg);
+  makeHoverHandlers(momentSvg);
+
+  window.addEventListener('pointermove', function (e) {
+    if (!dragInfo) return;
+    var raw = clientToX(e.clientX);
+    if (dragInfo.type === 'support') {
+      state.supports = state.supports.map(function (it) { return it.id === dragInfo.id ? Object.assign({}, it, { x: snapClamp(raw) }) : it; });
+    } else if (dragInfo.type === 'udl') {
+      state.loads = state.loads.map(function (it) {
+        if (it.id !== dragInfo.id) return it;
+        var span = Math.abs(it.x2 - it.x1);
+        var x1 = Math.round((raw - dragInfo.dx) / SNAP) * SNAP;
+        x1 = Math.min(Math.max(0, x1), Math.max(0, state.L - span));
+        return Object.assign({}, it, { x1: x1, x2: x1 + span });
+      });
+    } else {
+      state.loads = state.loads.map(function (it) { return it.id === dragInfo.id ? Object.assign({}, it, { x: snapClamp(raw) }) : it; });
+    }
+    render();
+  });
+  window.addEventListener('pointerup', function () { dragInfo = null; });
+
+  // Supports panel interaction
+  var supportsList = document.getElementById('supportsList');
+  supportsList.addEventListener('click', function (e) {
+    var delBtn = e.target.closest && e.target.closest('[data-role="support-del"]');
+    if (delBtn) { e.stopPropagation(); removeItem(delBtn.getAttribute('data-id')); return; }
+    var row = e.target.closest && e.target.closest('[data-role="support-row"]');
+    if (row && !(e.target.closest('select') || e.target.closest('input'))) {
+      var id = row.getAttribute('data-id');
+      if (state.selected !== id) { state.selected = id; render(); }
+    }
+  });
+  supportsList.addEventListener('change', function (e) {
+    var sel = e.target.closest && e.target.closest('[data-role="support-type"]');
+    if (sel) { updItem(sel.getAttribute('data-id'), { type: sel.value }); return; }
+    var xin = e.target.closest && e.target.closest('[data-role="support-x"]');
+    if (xin) { render(); }
+  });
+  supportsList.addEventListener('input', function (e) {
+    var xin = e.target.closest && e.target.closest('[data-role="support-x"]');
+    if (xin) {
+      var v = parseFloat(xin.value);
+      if (isFinite(v)) {
+        var clamped = Math.min(state.L, Math.max(0, v));
+        updItem(xin.getAttribute('data-id'), { x: clamped }, { skipPanels: true });
+      }
+    }
+  });
+
+  // Loads panel interaction
+  var loadsList = document.getElementById('loadsList');
+  var FIELD_MAP = { 'load-x': 'x', 'load-mag': 'mag', 'load-x1': 'x1', 'load-x2': 'x2', 'load-w': 'w', 'load-m': 'm' };
+  var CLAMP_FIELDS = { x: true, x1: true, x2: true };
+  loadsList.addEventListener('click', function (e) {
+    var delBtn = e.target.closest && e.target.closest('[data-role="load-del"]');
+    if (delBtn) { e.stopPropagation(); removeItem(delBtn.getAttribute('data-id')); return; }
+    var row = e.target.closest && e.target.closest('[data-role="load-row"]');
+    if (row && !e.target.closest('input')) {
+      var id = row.getAttribute('data-id');
+      if (state.selected !== id) { state.selected = id; render(); }
+    }
+  });
+  loadsList.addEventListener('input', function (e) {
+    var role = e.target.getAttribute && e.target.getAttribute('data-role');
+    var field = FIELD_MAP[role];
+    if (!field) return;
+    var v = parseFloat(e.target.value);
+    if (!isFinite(v)) return;
+    var val = v;
+    if (CLAMP_FIELDS[field]) val = Math.min(state.L, Math.max(0, v));
+    updItem(e.target.getAttribute('data-id'), (function () { var p = {}; p[field] = val; return p; })(), { skipPanels: true });
+  });
+  loadsList.addEventListener('change', function (e) {
+    var role = e.target.getAttribute && e.target.getAttribute('data-role');
+    if (FIELD_MAP[role]) render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
